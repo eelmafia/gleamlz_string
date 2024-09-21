@@ -34,7 +34,7 @@ pub fn compress_to_encoded_uri(string: String) {
   |> string.replace("=", "$")
 }
 
-pub fn decompress_to_encoded_uri(string: String) {
+pub fn decompress_from_encoded_uri(string: String) {
   string
   |> string.replace("-", "/")
   |> string.replace("$", "=")
