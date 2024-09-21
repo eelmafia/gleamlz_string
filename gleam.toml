@@ -1,0 +1,17 @@
+name = "gleamlz_string"
+version = "0.1.0"
+
+target = "erlang"
+
+description = "Gleam implementation of the JavaScript lz-string library"
+licences = ["Apache-2.0"]
+gleam = ">= 0.32.0"
+repository = { type = "github", user = "eelmafia", repo = "gleamlz_string" }
+links = [{ title = "Gleam", href = "https://gleam.run" }]
+
+[dependencies]
+gleam_stdlib = ">= 0.34.0 and < 2.0.0"
+gleam_erlang = ">= 0.26.0 and < 1.0.0"
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
