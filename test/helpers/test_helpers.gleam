@@ -6,7 +6,6 @@ import gleam/string
 
 pub fn random_string(size: Int) {
   random_string_tco([], size)
-  |> list.reverse
   |> string.from_utf_codepoints
 }
 
@@ -28,7 +27,7 @@ fn random_utf8() {
 }
 
 fn random_int_in_range() {
-  let n = int.random(65_533)
+  let n = int.random(65_535)
 
   case n <= 55_295 || n >= 57_344 {
     True -> n
@@ -37,18 +36,17 @@ fn random_int_in_range() {
 }
 
 pub fn generate_random_bytes(n: Int) {
-  generate_random_bytes_tco(n, 0, <<>>)
+  generate_random_bytes_tco(n, <<>>)
 }
 
-fn generate_random_bytes_tco(n: Int, acc: Int, bitstring: BitArray) {
+fn generate_random_bytes_tco(n: Int, bitstring: BitArray) {
   case n {
     0 -> bitstring
     _ -> {
-      generate_random_bytes_tco(
-        n - 1,
-        acc + 1,
-        bit_array.append(bitstring, <<int.random(255)>>),
-      )
+      generate_random_bytes_tco(n - 1, <<
+        bitstring:bits,
+        <<int.random(255)>>:bits,
+      >>)
     }
   }
 }
