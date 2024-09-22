@@ -1,7 +1,6 @@
 import gleam/bit_array
 import gleam/dict.{type Dict}
 import gleam/int
-import gleam/list
 import gleam/string
 
 pub type DecodeType {
@@ -35,8 +34,7 @@ pub fn compress(string: String) {
     _ -> {
       let bitstring =
         string.to_utf_codepoints(string)
-        |> compress_string("", _, dict.new())
-        |> bit_array.concat()
+        |> compress_string("", _, dict.new(), <<>>)
 
       let padding_bits = 16 - { { bitstring |> bit_size(0) } % 16 }
       <<bitstring:bits, 0:size(padding_bits)>>
@@ -48,12 +46,13 @@ fn compress_string(
   w: String,
   str: List(UtfCodepoint),
   dict: Dict(String, #(Int, Bool)),
-) -> List(BitArray) {
+  final_str: BitArray,
+) -> BitArray {
   case str {
     [] -> {
       let size = find_bits(dict.size(dict) + 2)
       let #(_dict, output) = w_output(w, dict, False)
-      [output, reverse(<<2:size(size)>>)]
+      <<final_str:bits, output:bits, reverse(<<2:size(size)>>):bits>>
     }
     [c, ..rest] -> {
       let char_just_added = !dict.has_key(dict, string.from_utf_codepoints([c]))
@@ -72,15 +71,16 @@ fn compress_string(
       let wc = w <> string.from_utf_codepoints([c])
       case dict.has_key(dict, wc) {
         True -> {
-          compress_string(wc, rest, dict)
+          compress_string(wc, rest, dict, final_str)
         }
         False -> {
           let #(dict, output) = w_output(w, dict, char_just_added)
           let dict = dict.insert(dict, wc, #(dict.size(dict) + 3, False))
-          list.append(
-            [output],
-            compress_string(string.from_utf_codepoints([c]), rest, dict),
-          )
+
+          compress_string(string.from_utf_codepoints([c]), rest, dict, <<
+            final_str:bits,
+            output:bits,
+          >>)
         }
       }
     }
@@ -123,17 +123,21 @@ fn w_output(w: String, dict: Dict(String, #(Int, Bool)), char_just_added: Bool) 
 pub fn decompress(bstring) {
   let assert Char(char) = decode_next_segment(bstring, dict.new())
 
-  decompress_string(char.0, char.1, char.2)
-  |> bit_array.concat
-  |> to_utf16
+  decompress_string(char.0, char.1, char.2, <<>>)
+  |> to_utf16("")
 }
 
-fn decompress_string(w, str, dict) -> List(BitArray) {
+fn decompress_string(
+  w: BitArray,
+  str: BitArray,
+  dict: Dict(Int, BitArray),
+  final_str: BitArray,
+) -> BitArray {
   case decode_next_segment(str, dict) {
     Char(char) -> {
       let dict =
         dict.insert(char.2, dict.size(char.2) + 3, bit_array.append(w, char.0))
-      list.append([w], decompress_string(char.0, char.1, dict))
+      decompress_string(char.0, char.1, dict, <<final_str:bits, w:bits>>)
     }
     Index(seq) -> {
       let c = case dict.get(dict, seq.0) {
@@ -151,10 +155,10 @@ fn decompress_string(w, str, dict) -> List(BitArray) {
           dict.size(dict) + 3,
           bit_array.append(w, <<c:bits-size(16)>>),
         )
-      list.append([w], decompress_string(c, seq.1, dict))
+      decompress_string(c, seq.1, dict, <<final_str:bits, w:bits>>)
     }
     EOF -> {
-      [w]
+      <<final_str:bits, w:bits>>
     }
   }
 }
@@ -191,15 +195,25 @@ fn decode_next_segment(bitstring, dict) -> DecodeType {
 
 // HELPERS
 
-fn to_utf16(bitstring: BitArray) -> String {
+fn to_utf16(bitstring: BitArray, string: String) -> String {
   case bitstring {
-    <<>> -> {
-      ""
-    }
+    <<>> -> string
     _ -> {
       let assert <<c:size(16), rest:bits>> = bitstring
-      let assert Ok(codepoint) = string.utf_codepoint(c)
-      string.from_utf_codepoints([codepoint]) <> to_utf16(rest)
+      //temporary fix as 65534 & 65535 aren't recognized as codepoints
+      let assert Ok(str) = case c {
+        65_534 -> {
+          bit_array.to_string(<<239, 191, 190>>)
+        }
+        65_535 -> {
+          bit_array.to_string(<<239, 191, 191>>)
+        }
+        other -> {
+          let assert Ok(codepoint) = string.utf_codepoint(other)
+          Ok(string.from_utf_codepoints([codepoint]))
+        }
+      }
+      to_utf16(rest, string <> str)
     }
   }
 }
