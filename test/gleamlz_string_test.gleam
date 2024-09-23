@@ -35,7 +35,7 @@ pub fn random_compression_test_() {
   #(timeout, 20.0, [
     fn() {
       let list =
-        list.concat([list.range(0, 55_295), list.range(57_344, 65_533)])
+        list.concat([list.range(0, 55_295), list.range(57_344, 65_535)])
 
       let stringlist =
         list.map(list, fn(x) { string.utf_codepoint(x) })
@@ -100,7 +100,7 @@ pub fn large_low_entropy_string_test_() {
   #(timeout, 40.0, [
     fn() {
       let str =
-        bit_array.base16_encode(test_helpers.generate_random_bytes(10_000))
+        bit_array.base16_encode(test_helpers.generate_random_bytes(1_000_000))
 
       gleamlz_string.compress_to_uint8(str)
       |> gleamlz_string.decompress_from_uint8

@@ -1,6 +1,4 @@
-import gleam/bit_array
 import gleam/int
-import gleam/list
 import gleam/result
 import gleam/string
 
