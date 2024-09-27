@@ -198,22 +198,41 @@ fn decode_next_segment(bitstring, dict) -> DecodeType {
 fn to_utf16(bitstring: BitArray, string: String) -> String {
   case bitstring {
     <<>> -> string
-    _ -> {
-      let assert <<c:size(16), rest:bits>> = bitstring
-      //temporary fix as 65534 & 65535 aren't recognized as codepoints
-      let assert Ok(str) = case c {
-        65_534 -> {
-          bit_array.to_string(<<239, 191, 190>>)
-        }
-        65_535 -> {
-          bit_array.to_string(<<239, 191, 191>>)
+    <<bytes:16, rest:bits>> -> {
+      case bytes {
+        surrogate if surrogate >= 0xD800 && surrogate <= 0xDFFF -> {
+          //check if high or low surrogate
+          case surrogate {
+            high if high >= 0xD800 && high <= 0xDBFF -> {
+              let assert <<low:size(16), rest:bits>> = rest
+              // Convert surrogates to codepoint - https://www.unicode.org/versions/Unicode3.0.0/ch03.pdf
+              let codepoint =
+                { high - 0xD800 } * 0x400 + { low - 0xDC00 } + 0x10000
+              let assert Ok(codepoint) = string.utf_codepoint(codepoint)
+              to_utf16(rest, string <> string.from_utf_codepoints([codepoint]))
+            }
+            _ -> panic as "Invalid UTF16"
+          }
         }
         other -> {
-          let assert Ok(codepoint) = string.utf_codepoint(other)
-          Ok(string.from_utf_codepoints([codepoint]))
+          let assert Ok(str) = case other {
+            65_534 -> {
+              bit_array.to_string(<<239, 191, 190>>)
+            }
+            65_535 -> {
+              bit_array.to_string(<<239, 191, 191>>)
+            }
+            any -> {
+              let assert Ok(codepoint) = string.utf_codepoint(any)
+              Ok(string.from_utf_codepoints([codepoint]))
+            }
+          }
+          to_utf16(rest, string <> str)
         }
       }
-      to_utf16(rest, string <> str)
+    }
+    _ -> {
+      panic as "Not enough bits"
     }
   }
 }
