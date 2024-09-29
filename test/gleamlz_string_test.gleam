@@ -1,7 +1,6 @@
 import gleam/bit_array
 import gleam/erlang/atom
 import gleam/list
-import gleam/result
 import gleam/string
 import gleamlz_string
 import gleeunit
@@ -27,24 +26,18 @@ pub fn known_decompression_test() {
     5, 133, 48, 54, 96, 246, 3, 64, 4, 9, 107, 2, 24, 22, 217, 180, 53, 51, 144,
     0,
   >>)
-  |> should.equal("hello, i am a 猫")
+  |> should.equal(Ok("hello, i am a 猫"))
 }
 
-pub fn random_compression_test_() {
+pub fn every_utf8_char_test_() {
   let assert Ok(timeout) = atom.from_string("timeout")
   #(timeout, 20.0, [
     fn() {
-      let list =
-        list.concat([list.range(0, 55_295), list.range(57_344, 65_535)])
+      let allutf8chars = test_helpers.all_utf8_chars()
 
-      let stringlist =
-        list.map(list, fn(x) { string.utf_codepoint(x) })
-        |> result.values
-        |> string.from_utf_codepoints
-
-      gleamlz_string.compress_to_uint8(stringlist)
+      gleamlz_string.compress_to_uint8(allutf8chars)
       |> gleamlz_string.decompress_from_uint8
-      |> should.equal(stringlist)
+      |> should.equal(Ok(allutf8chars))
     },
   ])
 }
@@ -58,7 +51,7 @@ pub fn repeated_single_byte_test_() {
         let string = string.repeat("a", x)
         gleamlz_string.compress_to_uint8(string)
         |> gleamlz_string.decompress_from_uint8
-        |> should.equal(string)
+        |> should.equal(Ok(string))
       })
     },
   ])
@@ -73,7 +66,7 @@ pub fn repeated_double_byte_test_() {
         let string = string.repeat("猫", x)
         gleamlz_string.compress_to_uint8(string)
         |> gleamlz_string.decompress_from_uint8
-        |> should.equal(string)
+        |> should.equal(Ok(string))
       })
     },
   ])
@@ -89,7 +82,7 @@ pub fn high_entropy_string_test_() {
 
         gleamlz_string.compress_to_uint8(str)
         |> gleamlz_string.decompress_from_uint8
-        |> should.equal(str)
+        |> should.equal(Ok(str))
       })
     },
   ])
@@ -104,7 +97,7 @@ pub fn large_low_entropy_string_test_() {
 
       gleamlz_string.compress_to_uint8(str)
       |> gleamlz_string.decompress_from_uint8
-      |> should.equal(str)
+      |> should.equal(Ok(str))
     },
   ])
 }

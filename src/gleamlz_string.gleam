@@ -1,6 +1,7 @@
 import gleam/bit_array
 import gleam/dict
 import gleam/list
+import gleam/result
 import gleam/string
 import internal_lib/lib
 
@@ -24,7 +25,7 @@ pub fn decompress_from_base64(string: String) {
   |> list.index_map(fn(x, i) { #(x, i) })
   |> dict.from_list()
   |> lib.decode_base64(string, _, <<>>)
-  |> lib.decompress
+  |> result.try(lib.decompress)
 }
 
 pub fn compress_to_encoded_uri(string: String) {

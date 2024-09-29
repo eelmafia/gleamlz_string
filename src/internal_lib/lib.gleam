@@ -1,9 +1,14 @@
 import gleam/bit_array
 import gleam/dict.{type Dict}
 import gleam/int
+import gleam/result
 import gleam/string
 
-pub type DecodeType {
+pub type DecompressError {
+  EInvalidInput
+}
+
+type DecodeType {
   Char(#(BitArray, BitArray, Dict(Int, BitArray)))
   Index(#(Int, BitArray))
   EOF
@@ -15,15 +20,19 @@ pub fn decode_base64(
   bitstring: BitArray,
 ) {
   case string.length(string) {
-    0 -> bitstring
+    0 -> Ok(bitstring)
     _ -> {
       let assert Ok(#(char, rest)) = string.pop_grapheme(string)
-      let assert Ok(num) = dict.get(key_dict, char)
-      decode_base64(
-        rest,
-        key_dict,
-        bit_array.append(bitstring, <<num:size(6)>>),
-      )
+      case dict.get(key_dict, char) {
+        Ok(num) -> {
+          decode_base64(
+            rest,
+            key_dict,
+            bit_array.append(bitstring, <<num:size(6)>>),
+          )
+        }
+        _ -> Error(EInvalidInput)
+      }
     }
   }
 }
@@ -120,11 +129,23 @@ fn w_output(w: String, dict: Dict(String, #(Int, Bool)), char_just_added: Bool) 
   }
 }
 
-pub fn decompress(bstring) {
-  let assert Char(char) = decode_next_segment(bstring, dict.new())
-
-  decompress_string(char.0, char.1, char.2, <<>>)
-  |> to_utf16("")
+pub fn decompress(bstring) -> Result(String, DecompressError) {
+  case bstring {
+    <<>> -> Ok("")
+    _ -> {
+      result.try(decode_next_segment(bstring, dict.new()), fn(return) {
+        case return {
+          Char(char) -> {
+            result.try(
+              decompress_string(char.0, char.1, char.2, <<>>),
+              fn(string) { to_utf16(string, "") },
+            )
+          }
+          _ -> Error(EInvalidInput)
+        }
+      })
+    }
+  }
 }
 
 fn decompress_string(
@@ -132,86 +153,113 @@ fn decompress_string(
   str: BitArray,
   dict: Dict(Int, BitArray),
   final_str: BitArray,
-) -> BitArray {
-  case decode_next_segment(str, dict) {
-    Char(char) -> {
-      let dict =
-        dict.insert(char.2, dict.size(char.2) + 3, bit_array.append(w, char.0))
-      decompress_string(char.0, char.1, dict, <<final_str:bits, w:bits>>)
-    }
-    Index(seq) -> {
-      let c = case dict.get(dict, seq.0) {
-        Ok(value) -> value
-        Error(Nil) -> {
-          case { dict.size(dict) + 3 } == seq.0 {
-            True -> bit_array.append(w, <<w:bits-size(16)>>)
-            False -> panic as "Error in decompressing"
+) -> Result(BitArray, DecompressError) {
+  result.try(decode_next_segment(str, dict), fn(return) {
+    case return {
+      Char(char) -> {
+        let dict =
+          dict.insert(
+            char.2,
+            dict.size(char.2) + 3,
+            bit_array.append(w, char.0),
+          )
+        decompress_string(char.0, char.1, dict, <<final_str:bits, w:bits>>)
+      }
+      Index(seq) -> {
+        let c = case dict.get(dict, seq.0) {
+          Ok(value) -> Ok(value)
+          Error(Nil) -> {
+            case { dict.size(dict) + 3 } == seq.0 {
+              True -> Ok(bit_array.append(w, <<w:bits-size(16)>>))
+              False -> Error(EInvalidInput)
+            }
           }
         }
+        result.try(c, fn(c) {
+          let dict =
+            dict.insert(
+              dict,
+              dict.size(dict) + 3,
+              bit_array.append(w, <<c:bits-size(16)>>),
+            )
+          decompress_string(c, seq.1, dict, <<final_str:bits, w:bits>>)
+        })
       }
-      let dict =
-        dict.insert(
-          dict,
-          dict.size(dict) + 3,
-          bit_array.append(w, <<c:bits-size(16)>>),
-        )
-      decompress_string(c, seq.1, dict, <<final_str:bits, w:bits>>)
+      EOF -> {
+        Ok(<<final_str:bits, w:bits>>)
+      }
     }
-    EOF -> {
-      <<final_str:bits, w:bits>>
-    }
-  }
+  })
 }
 
-fn decode_next_segment(bitstring, dict) -> DecodeType {
+fn decode_next_segment(bitstring, dict) -> Result(DecodeType, DecompressError) {
   let size = { dict.size(dict) + 3 } |> find_bits
-  let assert <<dict_entry:size(size), rest:bits>> = bitstring
-  let assert <<dict_entry:size(size)>> = reverse(<<dict_entry:size(size)>>)
 
-  case dict_entry {
-    0 -> {
-      let assert <<c:size(8), rest:bits>> = rest
-      let assert <<c:size(8)>> = reverse(<<c:size(8)>>)
-      let assert Ok(codepoint) = string.utf_codepoint(c)
-      let char = <<codepoint:utf16_codepoint>>
-      let dict = dict.insert(dict, dict.size(dict) + 3, char)
-      Char(#(char, rest, dict))
+  case bitstring {
+    <<dict_entry:size(size), rest:bits>> -> {
+      let assert <<dict_entry:size(size)>> = reverse(<<dict_entry:size(size)>>)
+      case dict_entry {
+        0 -> {
+          case rest {
+            <<c:size(8), rest:bits>> -> {
+              let assert <<c:size(8)>> = reverse(<<c:size(8)>>)
+              let assert Ok(codepoint) = string.utf_codepoint(c)
+              let char = <<codepoint:utf16_codepoint>>
+              let dict = dict.insert(dict, dict.size(dict) + 3, char)
+              Ok(Char(#(char, rest, dict)))
+            }
+            _ -> Error(EInvalidInput)
+          }
+        }
+        1 -> {
+          case rest {
+            <<c:size(16), rest:bits>> -> {
+              let assert <<c:size(16)>> = reverse(<<c:size(16)>>)
+              let char = <<c:size(16)>>
+              let dict = dict.insert(dict, dict.size(dict) + 3, char)
+              Ok(Char(#(char, rest, dict)))
+            }
+            _ -> Error(EInvalidInput)
+          }
+        }
+        2 -> {
+          Ok(EOF)
+        }
+        index -> {
+          Ok(Index(#(index, rest)))
+        }
+      }
     }
-    1 -> {
-      let assert <<c:size(16), rest:bits>> = rest
-      let assert <<c:size(16)>> = reverse(<<c:size(16)>>)
-      let char = <<c:size(16)>>
-      let dict = dict.insert(dict, dict.size(dict) + 3, char)
-      Char(#(char, rest, dict))
-    }
-    2 -> {
-      EOF
-    }
-    index -> {
-      Index(#(index, rest))
-    }
+    _ -> Error(EInvalidInput)
   }
 }
 
 // HELPERS
 
-fn to_utf16(bitstring: BitArray, string: String) -> String {
+fn to_utf16(bitstring: BitArray, string: String) {
   case bitstring {
-    <<>> -> string
+    <<>> -> Ok(string)
     <<bytes:16, rest:bits>> -> {
       case bytes {
         surrogate if surrogate >= 0xD800 && surrogate <= 0xDFFF -> {
           //check if high or low surrogate
           case surrogate {
             high if high >= 0xD800 && high <= 0xDBFF -> {
-              let assert <<low:size(16), rest:bits>> = rest
-              // Convert surrogates to codepoint - https://www.unicode.org/versions/Unicode3.0.0/ch03.pdf
-              let codepoint =
-                { high - 0xD800 } * 0x400 + { low - 0xDC00 } + 0x10000
-              let assert Ok(codepoint) = string.utf_codepoint(codepoint)
-              to_utf16(rest, string <> string.from_utf_codepoints([codepoint]))
+              case rest {
+                <<low:size(16), rest:bits>> -> {
+                  // Convert surrogates to codepoint - https://www.unicode.org/versions/Unicode3.0.0/ch03.pdf
+                  let codepoint =
+                    { high - 0xD800 } * 0x400 + { low - 0xDC00 } + 0x10000
+                  let assert Ok(codepoint) = string.utf_codepoint(codepoint)
+                  to_utf16(
+                    rest,
+                    string <> string.from_utf_codepoints([codepoint]),
+                  )
+                }
+                _ -> Error(EInvalidInput)
+              }
             }
-            _ -> panic as "Invalid UTF16"
+            _ -> Error(EInvalidInput)
           }
         }
         other -> {
@@ -232,7 +280,8 @@ fn to_utf16(bitstring: BitArray, string: String) -> String {
       }
     }
     _ -> {
-      panic as "Not enough bits"
+      //impossible to reach
+      Error(EInvalidInput)
     }
   }
 }
