@@ -15,14 +15,12 @@ type DecodeType {
 }
 
 pub fn decode_base64(
-  string: String,
+  string_list: List(String),
   key_dict: Dict(String, Int),
   bitstring: BitArray,
 ) {
-  case string.length(string) {
-    0 -> Ok(bitstring)
-    _ -> {
-      let assert Ok(#(char, rest)) = string.pop_grapheme(string)
+  case string_list {
+    [char, ..rest] -> {
       case dict.get(key_dict, char) {
         Ok(num) -> {
           decode_base64(
@@ -34,6 +32,7 @@ pub fn decode_base64(
         _ -> Error(EInvalidInput)
       }
     }
+    [] -> Ok(bitstring)
   }
 }
 

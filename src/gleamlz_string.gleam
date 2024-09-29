@@ -24,7 +24,7 @@ pub fn decompress_from_base64(string: String) {
   |> string.to_graphemes()
   |> list.index_map(fn(x, i) { #(x, i) })
   |> dict.from_list()
-  |> lib.decode_base64(string, _, <<>>)
+  |> lib.decode_base64(string.to_graphemes(string), _, <<>>)
   |> result.try(lib.decompress)
 }
 
