@@ -12,6 +12,7 @@ links = [{ title = "Gleam", href = "https://gleam.run" }]
 [dependencies]
 gleam_stdlib = ">= 0.34.0 and < 2.0.0"
 gleam_erlang = ">= 0.26.0 and < 1.0.0"
+file_streams = ">= 1.1.1 and < 2.0.0"
 
 [dev-dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"

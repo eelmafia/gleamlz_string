@@ -23,11 +23,7 @@ pub fn decode_base64(
     [char, ..rest] -> {
       case dict.get(key_dict, char) {
         Ok(num) -> {
-          decode_base64(
-            rest,
-            key_dict,
-            bit_array.append(bitstring, <<num:size(6)>>),
-          )
+          decode_base64(rest, key_dict, <<bitstring:bits, <<num:size(6)>>:bits>>)
         }
         _ -> Error(EInvalidInput)
       }
