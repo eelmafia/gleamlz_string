@@ -134,7 +134,7 @@ fn compress_string(
     [] -> {
       let size = find_bits(dict.size(dict) + 2)
       let #(_dict, output) = w_output(w, dict, False)
-      <<final_str:bits, output:bits, reverse(<<2:size(size)>>):bits>>
+      <<final_str:bits, output:bits, reverse(<<2:size(size)>>, <<>>):bits>>
     }
     [c, ..rest] -> {
       let char_just_added = !dict.has_key(dict, string.from_utf_codepoints([c]))
@@ -185,8 +185,8 @@ fn w_output(w: String, dict: Dict(String, #(Int, Bool)), char_just_added: Bool) 
           _ -> #(1, 16)
         }
       }
-      let size_marker_bits = reverse(<<size_marker:size(marker_size)>>)
-      let char_bits = reverse(<<char_val:size(char_size)>>)
+      let size_marker_bits = reverse(<<size_marker:size(marker_size)>>, <<>>)
+      let char_bits = reverse(<<char_val:size(char_size)>>, <<>>)
       #(dict, <<size_marker_bits:bits, char_bits:bits>>)
     }
     #(index, False) -> {
@@ -197,7 +197,7 @@ fn w_output(w: String, dict: Dict(String, #(Int, Bool)), char_just_added: Bool) 
         False -> map_size
       }
       let size = find_bits(map_size)
-      #(dict, reverse(<<index:size(size)>>))
+      #(dict, reverse(<<index:size(size)>>, <<>>))
     }
   }
 }
@@ -270,12 +270,13 @@ fn decode_next_segment(bitstring, dict) -> Result(DecodeType, DecompressError) {
 
   case bitstring {
     <<dict_entry:size(size), rest:bits>> -> {
-      let assert <<dict_entry:size(size)>> = reverse(<<dict_entry:size(size)>>)
+      let assert <<dict_entry:size(size)>> =
+        reverse(<<dict_entry:size(size)>>, <<>>)
       case dict_entry {
         0 -> {
           case rest {
             <<c:size(8), rest:bits>> -> {
-              let assert <<c:size(8)>> = reverse(<<c:size(8)>>)
+              let assert <<c:size(8)>> = reverse(<<c:size(8)>>, <<>>)
               let assert Ok(codepoint) = string.utf_codepoint(c)
               let char = <<codepoint:utf16_codepoint>>
               let dict = dict.insert(dict, dict.size(dict) + 3, char)
@@ -287,7 +288,7 @@ fn decode_next_segment(bitstring, dict) -> Result(DecodeType, DecompressError) {
         1 -> {
           case rest {
             <<c:size(16), rest:bits>> -> {
-              let assert <<c:size(16)>> = reverse(<<c:size(16)>>)
+              let assert <<c:size(16)>> = reverse(<<c:size(16)>>, <<>>)
               let char = <<c:size(16)>>
               let dict = dict.insert(dict, dict.size(dict) + 3, char)
               Ok(Char(#(char, rest, dict)))
@@ -365,14 +366,14 @@ fn find_bits(num: Int) {
   |> string.length
 }
 
-fn reverse(bitstring: BitArray) {
+fn reverse(bitstring: BitArray, newstr: BitArray) {
   case bitstring {
     <<>> -> {
-      <<>>
+      newstr
     }
     _ -> {
       let assert <<value:1-bits, rest:bits>> = bitstring
-      bit_array.append(reverse(rest), value)
+      reverse(rest, bit_array.append(value, newstr))
     }
   }
 }
